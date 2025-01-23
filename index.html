@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            background-color: #0077be;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #gameArea {
+            width: 800px;
+            height: 600px;
+            border: 4px solid #8B4513;
+            position: relative;
+            background: linear-gradient(to bottom, #87CEEB, #4682B4);
+            overflow: hidden;
+            margin: 0 auto;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        
+        .playerShip {
+            width: 80px;
+            height: 80px;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .enemyShip {
+            width: 70px;
+            height: 70px;
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .wordContainer {
+            position: absolute;
+            top: 75px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            text-shadow: 1px 1px 2px black;
+            white-space: nowrap;
+        }
+        
+        .typed {
+            color: #999;
+        }
+
+        .targeted {
+            outline: 3px solid gold;
+        }
+
+        .bullet {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: gold;
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(255,215,0,0.7);
+        }
+        
+        #stats {
+            width: 800px;
+            margin: 10px auto;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Arial', sans-serif;
+            color: white;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="stats">
+        <div>Lives: <span id="lives">3</span></div>
+        <div>Score: <span id="score">0</span></div>
+    </div>
+    <div id="gameArea">
+        <div class="playerShip">
+            <img src="res/pirate.png" width="80" height="80" alt="Pirate Ship">
+        </div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('gameArea');
+        const livesDisplay = document.getElementById('lives');
+        const scoreDisplay = document.getElementById('score');
+        
+        let enemies = [];
+        let lives = 3;
+        let score = 0;
+        let gameActive = true;
+        let currentTarget = null;
+        
+        const words = [
+            'anchor', 'boarding', 'cannon', 'capsize', 'compass', 
+            'cutlass', 'deck', 'doubloon', 'flag', 'galleon', 
+            'harbor', 'horizon', 'kraken', 'loot', 'marooned', 
+            'mast', 'mutiny', 'nautical', 'navigate', 'parrot', 
+            'plunder', 'privateer', 'quartermaster', 'reef', 'rigging', 
+            'sailor', 'scurvy', 'shipwreck', 'treasure', 'voyage'
+        ];
+        
+        class Enemy {
+            constructor() {
+                this.element = document.createElement('div');
+                this.element.className = 'enemyShip';
+                
+                const img = document.createElement('img');
+                img.src = 'res/enemy.png';
+                img.width = 50;
+                img.height = 50;
+                this.element.appendChild(img);
+
+                this.wordContainer = document.createElement('div');
+                this.wordContainer.className = 'wordContainer';
+                
+                this.originalWord = words[Math.floor(Math.random() * words.length)];
+                this.word = this.originalWord;
+                this.currentIndex = 0;
+                this.bullets = [];
+                
+                this.updateWord();
+                
+                this.element.style.left = '0px';
+                this.element.style.top = Math.random() * (gameArea.offsetHeight - 150) + 'px';
+                
+                this.element.appendChild(this.wordContainer);
+                gameArea.appendChild(this.element);
+            }
+
+            updateWord() {
+                this.wordContainer.innerHTML = 
+                    `<span class="typed">${this.originalWord.substring(0, this.originalWord.length - this.word.length)}</span>` + 
+                    this.word;
+            }
+
+            move() {
+                const currentLeft = parseInt(this.element.style.left);
+                if (currentLeft > gameArea.offsetWidth - 50) {
+                    this.destroy();
+                    loseLife();
+                    return false;
+                }
+                this.element.style.left = (currentLeft + 1) + 'px';
+                return true;
+            }
+
+            setTargeted(){
+                this.element.classList.toggle('targeted');
+            }
+
+            destroy() {
+                gameArea.removeChild(this.element);
+                enemies = enemies.filter(e => e !== this);
+            }
+
+            checkLetter(letter) {
+                if (letter === this.word[0]) {
+                    // Create and fire bullet immediately
+                    const bullet = this.createBullet();
+                    this.bullets.push(bullet);
+                    this.animateBullet(bullet, () => {
+                        if (this.word.length === 0) {
+                            this.destroyWhenAllBulletsReach();
+                        }
+                    });
+                    
+                    this.word = this.word.slice(1);
+                    
+                    this.updateWord();
+                    
+                    if (this.word.length === 0) {
+                        score += this.originalWord.length;
+                        scoreDisplay.textContent = score;
+                    }
+                    
+                    return true;
+                }
+                return false;
+            }
+
+            createBullet() {
+                const bullet = document.createElement('div');
+                bullet.className = 'bullet';
+                const playerShip = document.querySelector('.playerShip');
+                
+                const playerRect = playerShip.getBoundingClientRect();
+                const enemyRect = this.element.getBoundingClientRect();
+                const gameAreaRect = gameArea.getBoundingClientRect();
+
+                const startX = playerRect.left - gameAreaRect.left + playerRect.width / 2;
+                const startY = playerRect.top - gameAreaRect.top;
+                const targetX = enemyRect.left - gameAreaRect.left + enemyRect.width / 2;
+                const targetY = enemyRect.top - gameAreaRect.top;
+                
+                bullet.style.left = startX + 'px';
+                bullet.style.top = startY + 'px';
+
+                gameArea.appendChild(bullet);
+
+                return { 
+                    element: bullet, 
+                    startX, 
+                    startY, 
+                    targetX, 
+                    targetY,
+                    reached: false
+                };
+            }
+
+            animateBullet(bullet, onComplete) {
+                const startTime = performance.now();
+                const duration = 500;
+            
+                const animate = (currentTime) => {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+
+                    const currentX = bullet.startX + (bullet.targetX - bullet.startX) * progress;
+                    const currentY = bullet.startY + (bullet.targetY - bullet.startY) * progress;
+
+                    bullet.element.style.left = currentX + 'px';
+                    bullet.element.style.top = currentY + 'px';
+
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        bullet.reached = true;
+                        gameArea.removeChild(bullet.element);
+                        onComplete();
+                    }
+                };
+                requestAnimationFrame(animate);
+            }
+
+            destroyWhenAllBulletsReach() {
+                const checkAllBulletsReached = () => {
+                    if (this.bullets.every(b => b.reached)) {
+                        this.destroy();
+                        currentTarget = null;
+                    }
+                };
+
+                this.bullets.forEach(bullet => {
+                    checkAllBulletsReached();
+                });
+            }
+        }
+
+        function spawnEnemy() {
+            if(enemies.length < 5 && gameActive){
+                enemies.push(new Enemy());
+            }
+        }
+
+        function loseLife() {
+            lives--;
+            livesDisplay.textContent = lives;
+            if (lives <= 0){
+                gameActive = false;
+                alert('Game Over! Your score: ' + score);
+                resetGame();
+            }
+        }
+
+        function resetGame() {
+            enemies.forEach(enemy => enemy.destroy());
+            enemies = [];
+            lives = 3;
+            score = 1;
+            gameActive = true;
+            currentTarget = null;
+            livesDisplay.textContent = lives;
+            scoreDisplay.textContent = score-1;
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (!gameActive) return;
+            
+            if (event.key === 'Backspace') {
+                if (currentTarget) {
+                    currentTarget.setTargeted(false);
+                    currentTarget = null;
+                }
+                return;
+            }
+            
+            const letter = event.key.toLowerCase();
+            if (/^[a-z]$/.test(letter)) {
+                if (!currentTarget) {
+                    for (let enemy of enemies) {
+                        if (enemy.word[0] === letter) {
+                            currentTarget = enemy;
+                            enemy.setTargeted(true);
+                            enemy.checkLetter(letter);
+                            break;
+                        }
+                    }
+                } else {
+                    if (currentTarget.word[0] === letter) {
+                        currentTarget.checkLetter(letter);
+                    } else {
+                        currentTarget.setTargeted(false);
+                        currentTarget = null;
+                    }
+                }
+            }
+        });
+
+        setInterval(spawnEnemy, 3000);
+        
+        setInterval(() => {
+            if (gameActive) {
+                enemies.forEach(enemy => enemy.move());
+            }
+        }, 50);
+    </script>
+</body>
+</html>
