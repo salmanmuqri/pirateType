@@ -79,30 +79,48 @@
             padding: 10px;
             border-radius: 5px;
         }
+
+        #pauseOverlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 2em;
+        }
     </style>
 </head>
 <body>
     <div id="stats">
         <div>Lives: <span id="lives">3</span></div>
         <div>Score: <span id="score">0</span></div>
+        <div>High Score: <span id="highScore">0</span></div>
     </div>
     <div id="gameArea">
         <div class="playerShip">
             <img src="res/pirate.png" width="80" height="80" alt="Pirate Ship">
         </div>
+        <div id="pauseOverlay">PAUSED</div>
     </div>
 
     <script>
         const gameArea = document.getElementById('gameArea');
         const livesDisplay = document.getElementById('lives');
         const scoreDisplay = document.getElementById('score');
-        
-        let enemies = [];
-        let lives = 3;
-        let score = 0;
-        let gameActive = true;
-        let currentTarget = null;
-        
+        const highScoreDisplay = document.getElementById('highScore');
+        const pauseOverlay = document.getElementById('pauseOverlay');
+
+        const HIGH_SCORE_KEY = 'masterTypeHighScore';
+        let isPaused = false;
+        let highScore = parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0');
+        highScoreDisplay.textContent = highScore;
+
         const words = [
             'anchor', 'boarding', 'cannon', 'capsize', 'compass', 
             'cutlass', 'deck', 'doubloon', 'flag', 'galleon', 
@@ -111,11 +129,13 @@
             'plunder', 'privateer', 'quartermaster', 'reef', 'rigging', 
             'sailor', 'scurvy', 'shipwreck', 'treasure', 'voyage'
         ];
-        
+
         class Enemy {
             constructor() {
                 this.element = document.createElement('div');
                 this.element.className = 'enemyShip';
+                this.baseSpeed = 1;
+                this.speedMultiplier = 1 + (Math.floor(score / 50) * 0.5);
                 
                 const img = document.createElement('img');
                 img.src = 'res/enemy.png';
@@ -131,6 +151,9 @@
                 this.currentIndex = 0;
                 this.bullets = [];
                 
+                this.baseSpeed = 1;
+                this.speedMultiplier = 1 + (Math.floor(score / 50) * 0.2);
+
                 this.updateWord();
                 
                 this.element.style.left = '0px';
@@ -153,7 +176,7 @@
                     loseLife();
                     return false;
                 }
-                this.element.style.left = (currentLeft + 1) + 'px';
+                this.element.style.left = (currentLeft + (this.baseSpeed * this.speedMultiplier)) + 'px';
                 return true;
             }
 
@@ -168,7 +191,6 @@
 
             checkLetter(letter) {
                 if (letter === this.word[0]) {
-                    // Create and fire bullet immediately
                     const bullet = this.createBullet();
                     this.bullets.push(bullet);
                     this.animateBullet(bullet, () => {
@@ -184,6 +206,12 @@
                     if (this.word.length === 0) {
                         score += this.originalWord.length;
                         scoreDisplay.textContent = score;
+                        
+                        if (score > highScore) {
+                            highScore = score;
+                            highScoreDisplay.textContent = highScore;
+                            localStorage.setItem(HIGH_SCORE_KEY, highScore);
+                        }
                     }
                     
                     return true;
@@ -259,8 +287,14 @@
             }
         }
 
+        let enemies = [];
+        let lives = 3;
+        let score = 0;
+        let gameActive = true;
+        let currentTarget = null;
+
         function spawnEnemy() {
-            if(enemies.length < 5 && gameActive){
+            if(enemies.length < 5 && gameActive && !isPaused){
                 enemies.push(new Enemy());
             }
         }
@@ -270,7 +304,7 @@
             livesDisplay.textContent = lives;
             if (lives <= 0){
                 gameActive = false;
-                alert('Game Over! Your score: ' + score);
+                alert('Game Over! Your score: ' + score + '\nHigh Score: ' + highScore);
                 resetGame();
             }
         }
@@ -279,15 +313,23 @@
             enemies.forEach(enemy => enemy.destroy());
             enemies = [];
             lives = 3;
-            score = 1;
+            score = 0;
             gameActive = true;
             currentTarget = null;
             livesDisplay.textContent = lives;
-            scoreDisplay.textContent = score-1;
+            scoreDisplay.textContent = score;
         }
 
         document.addEventListener('keydown', (event) => {
             if (!gameActive) return;
+            
+            if (event.key === 'Escape') {
+                isPaused = !isPaused;
+                pauseOverlay.style.display = isPaused ? 'flex' : 'none';
+                return;
+            }
+            
+            if (isPaused) return;
             
             if (event.key === 'Backspace') {
                 if (currentTarget) {
@@ -322,7 +364,7 @@
         setInterval(spawnEnemy, 3000);
         
         setInterval(() => {
-            if (gameActive) {
+            if (gameActive && !isPaused) {
                 enemies.forEach(enemy => enemy.move());
             }
         }, 50);
